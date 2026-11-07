@@ -71,3 +71,17 @@ change adds `InputMethodHaiku` and makes the content view B_INPUT_METHOD_AWARE:
 - Not yet run on a machine: the VAIO was off, the Mac mini refused ssh, and
   the arm64 VM's ssh answered with a restricted shell. Chromium changes not
   yet compiled for the same reason (the 154 shim does compile).
+
+## HanBe, 2026-11-07
+
+HanBe (`HanBe_x86`, a Korean input method installed by hand in
+`~/config/non-packaged/add-ons/input_server/methods`) showed up beside this
+one. Moving its file away while input_server runs makes input_server unload
+it, and `HanBe::~HanBe` frees memory twice: input_server stops in the
+debugger ("double free", stack through `_UnregisterAddOn`) and keyboard and
+mouse die until a reboot. It looked like a kernel panic on the VAIO. The
+post-install script therefore freezes input_server (SIGSTOP), moves HanBe*
+to `~/config/settings/koreanime/disabled`, and kills it (SIGKILL, no
+destructors); app_server relaunches input_server when its event stream
+closes, and koreanime activates itself again. Tested on the VAIO with HanBe
+loaded: no crash, input_server back within seconds.
