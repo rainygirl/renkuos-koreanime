@@ -6,10 +6,19 @@
  *
  * The method stays active and has two modes of its own, Korean and English;
  * in English mode keys go through untouched. 한/영, a tap of the right Alt
- * key and Shift+Space switch modes. While a syllable is being composed it is
- * sent to the focused view as an inline input method composition
- * (B_INPUT_METHOD_EVENT), which BTextView, Terminal and R Chromium show in
- * place -- in R Chromium as a composition that sets KeyboardEvent.isComposing.
+ * key and Shift+Space switch modes. A syllable being composed shows where
+ * the text goes, in every application:
+ *
+ * - Views that take input method events (B_INPUT_METHOD_AWARE: BTextView,
+ *   so StyledEdit and text fields, and R Chromium) get an inline
+ *   composition -- in R Chromium one that sets KeyboardEvent.isComposing.
+ * - Other views (Terminal, ...) would get input_server's composition window
+ *   at the bottom of the screen. Instead every event of the composition is
+ *   marked be:inline_only, which input_server drops for such views, and
+ *   beside it goes a "direct" event whose be:translated key presses -- the
+ *   syllable, or a Backspace and the new syllable when it changes -- are
+ *   what input_server hands them in its place. Aware views ignore those
+ *   events: they carry no be:string.
  *
  * Plain C++98: on 32-bit x86 input_server is a gcc2 program, and this add-on
  * is built with gcc2 to be loaded by it.
@@ -49,6 +58,7 @@ static const uint32 kMsgKorean = 'KoKo';
 static const uint32 kMsgEnglish = 'KoEn';
 
 static const uint32 kSpaceKey = 0x5e;
+static const uint32 kBackspaceKey = 0x1e;
 static const uint32 kHangulKey = 0xf0;		// B_HANGUL_KEY on Korean keyboards
 static const uint32 kHangulHanjaKey = 0xf1;	// B_HANGUL_HANJA_KEY
 
@@ -83,13 +93,16 @@ public:
 
 private:
 			void				_ToggleMode(BList* outList);
-			void				_UpdateLook();
+			void				_UpdateLook(bool refreshDeskbar);
 			void				_Commit(BList* outList);
 			void				_AddStarted(BList* outList);
 			void				_AddChanged(BList* outList, unsigned syllable,
 									bool confirmed);
 			void				_AddStopped(BList* outList);
 			void				_ShowPreedit(BList* outList);
+			void				_ShowDirect(BList* outList, unsigned done,
+									unsigned preedit);
+			void				_AddDirectKey(BList* outList, unsigned syllable);
 			bool				_IsRightAltTap(BMessage* message);
 
 	static	int32				_ActivateThread(void* data);
@@ -104,6 +117,11 @@ private:
 			bool				fRightAltDown;
 			bool				fKeySinceRightAlt;
 			bool				fKeyPending;
+			// the syllable typed into a view that is not input method aware
+			// as plain text, still to be replaced while it is composed
+			unsigned			fShown;
+			uint32				fLocks;
+			int32				fCookie;
 			thread_id			fActivateThread;
 			volatile bool		fQuitting;
 };
@@ -170,13 +188,16 @@ KoreanInputMethod::KoreanInputMethod()
 	fRightAltDown(false),
 	fKeySinceRightAlt(false),
 	fKeyPending(false),
+	fShown(0),
+	fLocks(0),
+	fCookie(-1),
 	fActivateThread(-1),
 	fQuitting(false)
 {
 	fLooper = new MethodLooper(this);
 	fLooper->Run();
 
-	_UpdateLook();
+	_UpdateLook(false);
 
 	// Korean input should not need a trip to the Deskbar menu after every
 	// boot: make this the active method once input_server has settled.
@@ -230,13 +251,18 @@ KoreanInputMethod::_ActivateThread(void* data)
 	for (int32 cookie = kFirstAddOnCookie;
 			cookie <= kLastCookieToTry && !self->fQuitting; cookie++) {
 		if (self->fActive)
-			return 0;
+			return 0;	// picked in the Deskbar already
 		BMessage message(kSetMethod);
 		message.AddInt32("cookie", cookie);
 		if (inputServer.SendMessage(&message) != B_OK)
 			return 0;
 		for (int32 wait = 0; wait < 5 && !self->fActive; wait++)
 			snooze(100000);
+		if (self->fActive) {
+			BAutolock _(self->fLock);
+			self->fCookie = cookie;
+			return 0;
+		}
 	}
 
 	if (!self->fActive && !self->fQuitting) {
@@ -267,7 +293,7 @@ KoreanInputMethod::MethodActivated(bool active)
 	fRightAltDown = false;
 
 	if (active)
-		_UpdateLook();
+		_UpdateLook(false);
 
 	return BInputServerMethod::MethodActivated(active);
 }
@@ -279,6 +305,7 @@ KoreanInputMethod::CompositionDropped()
 	BAutolock _(fLock);
 	fComposer.Reset();
 	fComposing = false;
+	fShown = 0;
 }
 
 
@@ -296,7 +323,7 @@ KoreanInputMethod::SetKoreanMode(bool korean)
 			EnqueueMessage((BMessage*)events.ItemAt(i));
 	}
 	fKorean = korean;
-	_UpdateLook();
+	_UpdateLook(true);
 }
 
 
@@ -305,14 +332,22 @@ KoreanInputMethod::_ToggleMode(BList* outList)
 {
 	_Commit(outList);
 	fKorean = !fKorean;
-	_UpdateLook();
+	_UpdateLook(true);
 }
 
 
 void
-KoreanInputMethod::_UpdateLook()
+KoreanInputMethod::_UpdateLook(bool refreshDeskbar)
 {
 	SetIcon(fKorean ? kHangulIcon : kRomanIcon);
+	if (refreshDeskbar && fActive && fCookie >= 0) {
+		// The Deskbar replicant takes the new icon into its menu but keeps
+		// showing the old one until a method is selected; so select this
+		// one again.
+		BMessage message(kSetMethod);
+		message.AddInt32("cookie", fCookie);
+		BMessenger(be_app).SendMessage(&message);
+	}
 
 	BMenu* menu = new BMenu("한국어");
 	BMenuItem* korean = new BMenuItem("한글  (한/영, 오른쪽 Alt, Shift+Space)",
@@ -334,6 +369,7 @@ KoreanInputMethod::_AddStarted(BList* outList)
 {
 	BMessage* message = new BMessage(B_INPUT_METHOD_EVENT);
 	message->AddInt32("be:opcode", B_INPUT_METHOD_STARTED);
+	message->AddBool("be:inline_only", true);
 	message->AddMessenger("be:reply_to", BMessenger(NULL, fLooper));
 	outList->AddItem(message);
 	fComposing = true;
@@ -352,6 +388,7 @@ KoreanInputMethod::_AddChanged(BList* outList, unsigned syllable,
 
 	BMessage* message = new BMessage(B_INPUT_METHOD_EVENT);
 	message->AddInt32("be:opcode", B_INPUT_METHOD_CHANGED);
+	message->AddBool("be:inline_only", true);
 	message->AddString("be:string", text);
 	message->AddInt32("be:clause_start", 0);
 	message->AddInt32("be:clause_end", length);
@@ -372,8 +409,72 @@ KoreanInputMethod::_AddStopped(BList* outList)
 {
 	BMessage* message = new BMessage(B_INPUT_METHOD_EVENT);
 	message->AddInt32("be:opcode", B_INPUT_METHOD_STOPPED);
+	message->AddBool("be:inline_only", true);
 	outList->AddItem(message);
 	fComposing = false;
+}
+
+
+/*!	One key press for a view that is not input method aware: the syllable,
+	or Backspace when \a syllable is 0. input_server delivers be:translated
+	to such views and drops the rest of the event; aware views get the event
+	itself and pass over it, as it has no be:string.
+*/
+void
+KoreanInputMethod::_AddDirectKey(BList* outList, unsigned syllable)
+{
+	char text[5];
+	int32 key = 0;
+	int32 rawChar = 0xa;
+	if (syllable != 0) {
+		text[koreanime::EncodeUTF8(syllable, text)] = '\0';
+	} else {
+		text[0] = B_BACKSPACE;
+		text[1] = '\0';
+		key = kBackspaceKey;
+		rawChar = B_BACKSPACE;
+	}
+
+	BMessage keyDown(B_KEY_DOWN);
+	keyDown.AddInt64("when", system_time());
+	keyDown.AddInt32("key", key);
+	keyDown.AddInt32("modifiers", fLocks);
+	for (int32 i = 0; text[i] != '\0'; i++)
+		keyDown.AddInt8("byte", (int8)text[i]);
+	keyDown.AddString("bytes", text);
+	keyDown.AddInt32("raw_char", rawChar);
+
+	BMessage* message = new BMessage(B_INPUT_METHOD_EVENT);
+	message->AddInt32("be:opcode", B_INPUT_METHOD_CHANGED);
+	message->AddBool("be:inline_only", true);
+	message->AddBool("be:confirmed", true);
+	message->AddBool("koreanime:direct", true);
+	message->AddMessage("be:translated", &keyDown);
+	outList->AddItem(message);
+}
+
+
+/*!	Brings a view that is not input method aware up to date after a key:
+	\a done is the syllable the key finished, if any, \a preedit the one now
+	being composed. What fShown says is on screen is replaced only if it
+	changed.
+*/
+void
+KoreanInputMethod::_ShowDirect(BList* outList, unsigned done, unsigned preedit)
+{
+	unsigned first = done != 0 ? done : preedit;
+	if (fShown != 0 && first == fShown) {
+		if (done != 0 && preedit != 0)
+			_AddDirectKey(outList, preedit);
+	} else {
+		if (fShown != 0)
+			_AddDirectKey(outList, 0);
+		if (done != 0)
+			_AddDirectKey(outList, done);
+		if (preedit != 0)
+			_AddDirectKey(outList, preedit);
+	}
+	fShown = preedit;
 }
 
 
@@ -382,6 +483,8 @@ void
 KoreanInputMethod::_Commit(BList* outList)
 {
 	unsigned syllable = fComposer.Flush();
+	// in a view that is not aware, the syllable is already there as text
+	fShown = 0;
 	if (!fComposing && syllable == 0)
 		return;
 	if (!fComposing)
@@ -451,6 +554,15 @@ KoreanInputMethod::Filter(BMessage* message, BList* outList)
 	BAutolock _(fLock);
 	fKeyPending = false;
 
+	if (message->what == B_MOUSE_DOWN) {
+		// a click may move the caret: what is composed is done
+		if (!fComposing && fComposer.IsEmpty())
+			return B_DISPATCH_MESSAGE;
+		_Commit(outList);
+		outList->AddItem(new BMessage(*message));
+		return B_DISPATCH_MESSAGE;
+	}
+
 	if (message->what == B_MODIFIERS_CHANGED) {
 		if (_IsRightAltTap(message)) {
 			// the modifiers change itself still goes on
@@ -470,6 +582,7 @@ KoreanInputMethod::Filter(BMessage* message, BList* outList)
 	uint32 modifiers = 0;
 	message->FindInt32("key", &key);
 	message->FindInt32("modifiers", (int32*)&modifiers);
+	fLocks = modifiers & (B_CAPS_LOCK | B_NUM_LOCK | B_SCROLL_LOCK);
 
 	if (key == (int32)kHangulKey) {
 		_ToggleMode(outList);
@@ -510,6 +623,7 @@ KoreanInputMethod::Filter(BMessage* message, BList* outList)
 			_AddStopped(outList);
 		}
 		_ShowPreedit(outList);
+		_ShowDirect(outList, done, fComposer.Preedit());
 		return outList->CountItems() > 0 ? B_DISPATCH_MESSAGE : B_SKIP_MESSAGE;
 	}
 
@@ -520,6 +634,7 @@ KoreanInputMethod::Filter(BMessage* message, BList* outList)
 		fKeyPending = true;
 		fComposer.Backspace();
 		_ShowPreedit(outList);
+		_ShowDirect(outList, 0, fComposer.Preedit());
 		return outList->CountItems() > 0 ? B_DISPATCH_MESSAGE : B_SKIP_MESSAGE;
 	}
 

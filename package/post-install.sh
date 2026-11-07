@@ -32,7 +32,10 @@ done
 
 if [ -n "$others" ]; then
 	mkdir -p "$disabled"
-	server=$(ps | awk '$1 == "/boot/system/servers/input_server" { print $2 }')
+	# not awk: not every system has it
+	server=$(ps | while read -r command pid rest; do
+		[ "$command" = /boot/system/servers/input_server ] && echo "$pid"
+	done)
 	[ -n "$server" ] && kill -STOP $server 2> /dev/null
 	printf '%s\n' "$others" | while IFS= read -r method; do
 		[ -n "$method" ] && mv "$method" "$disabled/" 2> /dev/null

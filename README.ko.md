@@ -36,16 +36,16 @@ R Chromium에서 한글을 입력할 수 있으며, R Chromium에서는 웹 페�
 
 ## 동작하는 곳
 
-- **RenkuOS 응용 프로그램**(StyledEdit, Mail, Tracker 등 BTextView를 쓰는
-  프로그램)과 **터미널**: 글자가 그 자리에서 조합됩니다.
+- **글자를 입력하는 모든 곳**: 별도의 입력 창 없이 커서 위치에서 글자가
+  조합됩니다. RenkuOS 응용 프로그램(StyledEdit, Mail, Tracker 등
+  BTextView를 쓰는 프로그램), 터미널, 입력기를 지원하지 않는 프로그램
+  모두 같습니다.
 - **R Chromium** 154.0.8036.0-16 이상(x86_64, arm64), rchromium_x86
   114.0.5735.199-18 이상(32비트 x86): 웹 페이지가 compositionstart /
   compositionupdate / compositionend와, `isComposing`이 켜지고 key가
   "Process"인 keydown을 다른 시스템의 Chrome과 똑같이 받습니다. 글자를
   조합하다 Enter를 누르면 마지막 글자가 두 번 들어가는 일 없이 전체가
   전송됩니다.
-- 입력기를 지원하지 않는 프로그램에서는 input_server의 작은 입력 창에
-  입력합니다.
 
 ## 언어
 

@@ -39,6 +39,20 @@ C++98 for gcc 2.95.
 - The first CHANGED a key causes carries `koreanime:key = true`, the others
   `false`. R Chromium dispatches one keydown "Process" (keyCode 229) per
   `true`, so each consumed key is one keydown, as on other systems.
+- Views that are not B_INPUT_METHOD_AWARE (Terminal, ...) would get
+  input_server's bottom-line window. Every composition event is marked
+  `be:inline_only`, which input_server drops for such views
+  (`InputServer::_MethodizeEvents`), and next to it goes a "direct" event:
+  CHANGED, confirmed, `be:inline_only`, `koreanime:direct`, no `be:string`,
+  with a B_KEY_DOWN in `be:translated` -- the syllable, or Backspace. Such
+  views get only those key presses: the syllable typed, then Backspace and
+  the new one each time it changes (`fShown`). Aware views get the direct
+  events themselves and pass over them: BTextView needs `be:string`, R
+  Chromium skips `koreanime:direct`. A mouse click commits, as the caret may
+  move.
+- The Deskbar replicant puts a new icon into its menu but keeps drawing the
+  old one (`MethodReplicant::UpdateMethodIcon` does not invalidate), so a
+  mode change selects the method again by its cookie, which repaints it.
 - `be:reply_to` is a looper of the method's own; views send it
   B_INPUT_METHOD_STOPPED to drop a composition (BTextView on a click, R
   Chromium on a focus change), and the composer resets.
@@ -68,9 +82,10 @@ change adds `InputMethodHaiku` and makes the content view B_INPUT_METHOD_AWARE:
 - Add-on and koreanime-setup: cross-built for x86_gcc2 (gcc 2.95) and arm64
   (gcc 13), linked with --no-undefined. x86_64 needs the cross toolchain on
   the Mac mini (`/root/gen-x64` in `haiku-chromium`).
-- Not yet run on a machine: the VAIO was off, the Mac mini refused ssh, and
-  the arm64 VM's ssh answered with a restricted shell. Chromium changes not
-  yet compiled for the same reason (the 154 shim does compile).
+- 2026-11-08: run on the VAIO (x86_gcc2) and the arm64 QEMU VM. Terminal:
+  composed in place, Backspace edits the syllable, `echo 안녕하세요` prints
+  it. StyledEdit: inline composition, nothing doubled. The Deskbar icon
+  follows the mode.
 
 ## HanBe, 2026-11-07
 
