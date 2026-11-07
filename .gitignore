@@ -1,0 +1,5 @@
+build/
+# cross-built binaries (tools/cross-*.sh)
+dist/
+*.pyc
+__pycache__/
