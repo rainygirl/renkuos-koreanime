@@ -33,7 +33,7 @@ CFLAGS="-O2 -Wall -Wno-multichar -pipe -march=pentium -nostdinc -DARCH_x86
 	-Isrc"
 
 mkdir -p "$OUT" build/x86_gcc2
-for f in Hangul KoreanInputMethod KoreanSetup; do
+for f in Hangul KoreanInputMethod KoreanSetup KoreanIndicator; do
 	$CC -c src/$f.cpp $CFLAGS $INCLUDES -o build/x86_gcc2/$f.o
 done
 
@@ -53,6 +53,15 @@ $CC -pipe -march=pentium -nostdlib -Xlinker --no-undefined \
 	"$O/system/glue/arch/x86/crti.o" "$GCCLIB/crtbeginS.o" \
 	"$O/system/glue/start_dyn.o" "$O/system/glue/init_term_dyn.o" \
 	build/x86_gcc2/KoreanSetup.o \
+	"$O/kits/libbe.so" "$O/system/libroot/libroot.so" "$LIBGCC" \
+	"$GCCLIB/crtendS.o" "$O/system/glue/arch/x86/crtn.o"
+
+# the Deskbar indicator: an add-on loaded by Deskbar
+$CC -pipe -march=pentium -shared -nostdlib -Xlinker --no-undefined \
+	-Xlinker -soname=KoreanIndicator -o "$OUT/KoreanIndicator" \
+	"$O/system/glue/arch/x86/crti.o" "$GCCLIB/crtbeginS.o" \
+	"$O/system/glue/init_term_dyn.o" \
+	build/x86_gcc2/KoreanIndicator.o \
 	"$O/kits/libbe.so" "$O/system/libroot/libroot.so" "$LIBGCC" \
 	"$GCCLIB/crtendS.o" "$O/system/glue/arch/x86/crtn.o"
 

@@ -26,6 +26,9 @@
 
 #include <Application.h>
 #include <Autolock.h>
+#include <Deskbar.h>
+#include <Entry.h>
+#include <Path.h>
 #include <Input.h>
 #include <InputServerMethod.h>
 #include <InterfaceDefs.h>
@@ -36,15 +39,19 @@
 #include <Message.h>
 #include <Messenger.h>
 #include <OS.h>
+#include <image.h>
 
 #include <stdlib.h>
 #include <string.h>
 
 #include "Hangul.h"
 #include "Icons.h"
+#include "Indicator.h"
 
 
 using koreanime::Composer;
+using koreanime::kMsgKorean;
+using koreanime::kMsgEnglish;
 
 
 // The message input_server's Deskbar menu sends to pick a method; its
@@ -54,8 +61,8 @@ static const uint32 kSetMethod = 'MRsm';
 static const int32 kFirstAddOnCookie = 2;
 static const int32 kLastCookieToTry = 24;
 
-static const uint32 kMsgKorean = 'KoKo';
-static const uint32 kMsgEnglish = 'KoEn';
+// input_server's own Deskbar item, a 16x16 bitmap that is not scaled
+static const char* const kMethodReplicantName = "MethodReplicant";
 
 static const uint32 kSpaceKey = 0x5e;
 static const uint32 kBackspaceKey = 0x1e;
@@ -67,7 +74,7 @@ class KoreanInputMethod;
 
 
 // Receives what views send back (B_INPUT_METHOD_STOPPED when they drop the
-// composition) and the Deskbar menu's choices.
+// composition), the Deskbar menu's choices and the Deskbar indicator.
 class MethodLooper : public BLooper {
 public:
 								MethodLooper(KoreanInputMethod* method);
@@ -90,10 +97,11 @@ public:
 
 			void				CompositionDropped();
 			void				SetKoreanMode(bool korean);
+			void				SetIndicator(const BMessenger& indicator);
 
 private:
 			void				_ToggleMode(BList* outList);
-			void				_UpdateLook(bool refreshDeskbar);
+			void				_UpdateLook();
 			void				_Commit(BList* outList);
 			void				_AddStarted(BList* outList);
 			void				_AddChanged(BList* outList, unsigned syllable,
@@ -105,7 +113,10 @@ private:
 			void				_AddDirectKey(BList* outList, unsigned syllable);
 			bool				_IsRightAltTap(BMessage* message);
 
+			void				_NotifyIndicator();
+
 	static	int32				_ActivateThread(void* data);
+	static	int32				_DeskbarThread(void* data);
 
 			BLocker				fLock;
 			Composer			fComposer;
@@ -121,8 +132,9 @@ private:
 			// as plain text, still to be replaced while it is composed
 			unsigned			fShown;
 			uint32				fLocks;
-			int32				fCookie;
+			BMessenger			fIndicator;
 			thread_id			fActivateThread;
+			thread_id			fDeskbarThread;
 			volatile bool		fQuitting;
 };
 
@@ -142,7 +154,7 @@ instantiate_input_method()
 
 MethodLooper::MethodLooper(KoreanInputMethod* method)
 	:
-	BLooper("koreanime"),
+	BLooper(koreanime::kMethodLooperName),
 	fMethod(method)
 {
 }
@@ -167,6 +179,13 @@ MethodLooper::MessageReceived(BMessage* message)
 		case kMsgEnglish:
 			fMethod->SetKoreanMode(false);
 			break;
+		case koreanime::kMsgRegister:
+		{
+			BMessenger indicator;
+			if (message->FindMessenger("indicator", &indicator) == B_OK)
+				fMethod->SetIndicator(indicator);
+			break;
+		}
 		default:
 			BLooper::MessageReceived(message);
 	}
@@ -190,14 +209,14 @@ KoreanInputMethod::KoreanInputMethod()
 	fKeyPending(false),
 	fShown(0),
 	fLocks(0),
-	fCookie(-1),
 	fActivateThread(-1),
+	fDeskbarThread(-1),
 	fQuitting(false)
 {
 	fLooper = new MethodLooper(this);
 	fLooper->Run();
 
-	_UpdateLook(false);
+	_UpdateLook();
 
 	// Korean input should not need a trip to the Deskbar menu after every
 	// boot: make this the active method once input_server has settled.
@@ -205,16 +224,22 @@ KoreanInputMethod::KoreanInputMethod()
 		B_LOW_PRIORITY, this);
 	if (fActivateThread >= 0)
 		resume_thread(fActivateThread);
+
+	fDeskbarThread = spawn_thread(_DeskbarThread, "koreanime deskbar",
+		B_LOW_PRIORITY, this);
+	if (fDeskbarThread >= 0)
+		resume_thread(fDeskbarThread);
 }
 
 
 KoreanInputMethod::~KoreanInputMethod()
 {
 	fQuitting = true;
-	if (fActivateThread >= 0) {
-		status_t result;
+	status_t result;
+	if (fActivateThread >= 0)
 		wait_for_thread(fActivateThread, &result);
-	}
+	if (fDeskbarThread >= 0)
+		wait_for_thread(fDeskbarThread, &result);
 
 	SetMenu(NULL, BMessenger());
 	delete fMenu;
@@ -258,11 +283,8 @@ KoreanInputMethod::_ActivateThread(void* data)
 			return 0;
 		for (int32 wait = 0; wait < 5 && !self->fActive; wait++)
 			snooze(100000);
-		if (self->fActive) {
-			BAutolock _(self->fLock);
-			self->fCookie = cookie;
+		if (self->fActive)
 			return 0;
-		}
 	}
 
 	if (!self->fActive && !self->fQuitting) {
@@ -293,7 +315,9 @@ KoreanInputMethod::MethodActivated(bool active)
 	fRightAltDown = false;
 
 	if (active)
-		_UpdateLook(false);
+		_UpdateLook();
+	else
+		_NotifyIndicator();
 
 	return BInputServerMethod::MethodActivated(active);
 }
@@ -323,7 +347,89 @@ KoreanInputMethod::SetKoreanMode(bool korean)
 			EnqueueMessage((BMessage*)events.ItemAt(i));
 	}
 	fKorean = korean;
-	_UpdateLook(true);
+	_UpdateLook();
+}
+
+
+void
+KoreanInputMethod::SetIndicator(const BMessenger& indicator)
+{
+	BAutolock _(fLock);
+	fIndicator = indicator;
+	_NotifyIndicator();
+}
+
+
+// Tells the Deskbar indicator the mode; never waits for it.
+void
+KoreanInputMethod::_NotifyIndicator()
+{
+	if (!fIndicator.IsValid())
+		return;
+	BMessage message(koreanime::kMsgState);
+	message.AddBool("korean", fKorean);
+	message.AddBool("active", fActive);
+	fIndicator.SendMessage(&message, (BHandler*)NULL, 0);
+}
+
+
+// The indicator add-on: add-ons/koreanime/KoreanIndicator, beside the
+// add-ons/input_server/methods folder this add-on was loaded from -- in the
+// system or in ~/config/non-packaged alike.
+static status_t
+indicator_ref(entry_ref* ref)
+{
+	image_info info;
+	int32 cookie = 0;
+	addr_t self = (addr_t)&indicator_ref;
+	while (get_next_image_info(B_CURRENT_TEAM, &cookie, &info) == B_OK) {
+		addr_t text = (addr_t)info.text;
+		if (self < text || self >= text + info.text_size)
+			continue;
+		BPath path(info.name);
+		for (int32 i = 0; i < 3; i++) {
+			if (path.GetParent(&path) != B_OK)
+				return B_ERROR;
+		}
+		path.Append("koreanime/KoreanIndicator");
+		return get_ref_for_path(path.Path(), ref);
+	}
+	return B_ERROR;
+}
+
+
+/*!	Keeps the Deskbar showing this method's indicator instead of
+	input_server's item. input_server puts its item back whenever its list of
+	methods changes, and Deskbar may start after input_server or be
+	restarted, so this looks again every few seconds.
+*/
+int32
+KoreanInputMethod::_DeskbarThread(void* data)
+{
+	KoreanInputMethod* self = (KoreanInputMethod*)data;
+
+	entry_ref ref;
+	bool haveIndicator = indicator_ref(&ref) == B_OK
+		&& BEntry(&ref).Exists();
+
+	int32 wait = 20;
+	while (!self->fQuitting) {
+		for (int32 i = 0; i < wait && !self->fQuitting; i++)
+			snooze(100000);
+		wait = 30;
+		if (self->fQuitting || !haveIndicator)
+			break;
+
+		BDeskbar deskbar;
+		if (!deskbar.IsRunning())
+			continue;
+		if (!deskbar.HasItem(koreanime::kIndicatorName)
+			&& deskbar.AddItem(&ref) != B_OK)
+			continue;
+		if (deskbar.HasItem(kMethodReplicantName))
+			deskbar.RemoveItem(kMethodReplicantName);
+	}
+	return 0;
 }
 
 
@@ -332,22 +438,15 @@ KoreanInputMethod::_ToggleMode(BList* outList)
 {
 	_Commit(outList);
 	fKorean = !fKorean;
-	_UpdateLook(true);
+	_UpdateLook();
 }
 
 
 void
-KoreanInputMethod::_UpdateLook(bool refreshDeskbar)
+KoreanInputMethod::_UpdateLook()
 {
 	SetIcon(fKorean ? kHangulIcon : kRomanIcon);
-	if (refreshDeskbar && fActive && fCookie >= 0) {
-		// The Deskbar replicant takes the new icon into its menu but keeps
-		// showing the old one until a method is selected; so select this
-		// one again.
-		BMessage message(kSetMethod);
-		message.AddInt32("cookie", fCookie);
-		BMessenger(be_app).SendMessage(&message);
-	}
+	_NotifyIndicator();
 
 	BMenu* menu = new BMenu("한국어");
 	BMenuItem* korean = new BMenuItem("한글  (한/영, 오른쪽 Alt, Shift+Space)",

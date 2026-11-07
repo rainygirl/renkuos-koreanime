@@ -20,7 +20,9 @@ That is all. Afterwards:
 - the interface language and formatting switch to Korean (ko, ko_KR), unless
   the system already uses Korean;
 - the input method turns itself on, now and after every boot. Deskbar shows
-  **A** while you type English and **한** while you type Korean.
+  **A** while you type English and **한** while you type Korean, sized for
+  the screen (sharp on HiDPI too). It takes the place of the system's small
+  input method icon.
 
 ## Typing Korean
 

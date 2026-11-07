@@ -41,7 +41,7 @@ LIBS="$SYSLIBS/lib/libstdc++.so $O/system/libroot/libroot.so
 	$SYSLIBS/lib/libgcc_s.so.1 $SYSDEVEL/develop/lib/libgcc.a"
 
 mkdir -p "$OUT" build/arm64
-for f in Hangul KoreanInputMethod KoreanSetup; do
+for f in Hangul KoreanInputMethod KoreanSetup KoreanIndicator; do
 	$CC -c src/$f.cpp $CFLAGS $INCLUDES -o build/arm64/$f.o
 done
 
@@ -58,6 +58,14 @@ $CC -pipe -nostdlib -Xlinker --no-undefined \
 	"$O/system/glue/arch/arm64/crti.o" "$GCCLIB/crtbeginS.o" \
 	"$O/system/glue/start_dyn.o" "$O/system/glue/init_term_dyn.o" \
 	build/arm64/KoreanSetup.o \
+	"$O/kits/libbe.so" $LIBS \
+	"$GCCLIB/crtendS.o" "$O/system/glue/arch/arm64/crtn.o"
+
+$CC -pipe -shared -nostdlib -Xlinker --no-undefined \
+	-Xlinker -soname=KoreanIndicator -o "$OUT/KoreanIndicator" \
+	"$O/system/glue/arch/arm64/crti.o" "$GCCLIB/crtbeginS.o" \
+	"$O/system/glue/init_term_dyn.o" \
+	build/arm64/KoreanIndicator.o \
 	"$O/kits/libbe.so" $LIBS \
 	"$GCCLIB/crtendS.o" "$O/system/glue/arch/arm64/crtn.o"
 
