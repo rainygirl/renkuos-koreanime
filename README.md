@@ -7,7 +7,6 @@ in RenkuOS applications, in Terminal and in R Chromium, where web pages get
 proper composition events (`KeyboardEvent.isComposing`). Installing it also
 switches the system to Korean.
 
-
 <img src="docs/terminal.png" alt="Composing in place in Terminal" width="560"> <img src="docs/deskbar.png" alt="The Deskbar indicator" width="134">
 
 ## Install with pkgman
