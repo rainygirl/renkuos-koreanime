@@ -42,7 +42,7 @@ stops working, press Alt+Space once to bring this one back.
   cursor, with no separate window -- in RenkuOS applications (StyledEdit,
   Mail, the Tracker and everything built on BTextView), in Terminal and in
   applications that do not support input methods.
-- **R Chromium** 154.0.8036.0-16 and later (x86_64, arm64), and
+- **R Chromium** 154.0.8036.0-18 and later (x86_64, arm64), and
   rchromium_x86 114.0.5735.199-18 and later (32-bit x86): pages see
   compositionstart / compositionupdate / compositionend, and keydown with
   `isComposing` and key "Process", as in Chrome on other systems. Enter after

@@ -42,7 +42,7 @@ R Chromium에서 한글을 입력할 수 있으며, R Chromium에서는 웹 페�
   조합됩니다. RenkuOS 응용 프로그램(StyledEdit, Mail, Tracker 등
   BTextView를 쓰는 프로그램), 터미널, 입력기를 지원하지 않는 프로그램
   모두 같습니다.
-- **R Chromium** 154.0.8036.0-16 이상(x86_64, arm64), rchromium_x86
+- **R Chromium** 154.0.8036.0-18 이상(x86_64, arm64), rchromium_x86
   114.0.5735.199-18 이상(32비트 x86): 웹 페이지가 compositionstart /
   compositionupdate / compositionend와, `isComposing`이 켜지고 key가
   "Process"인 keydown을 다른 시스템의 Chrome과 똑같이 받습니다. 글자를
