@@ -683,9 +683,12 @@ KoreanInputMethod::Filter(BMessage* message, BList* outList)
 	message->FindInt32("modifiers", (int32*)&modifiers);
 	fLocks = modifiers & (B_CAPS_LOCK | B_NUM_LOCK | B_SCROLL_LOCK);
 
+	// The toggle keys themselves go nowhere, but what _ToggleMode() commits
+	// must: input_server drops outList with B_SKIP_MESSAGE, and an aware view
+	// (R Chromium, BTextView) would be left composing.
 	if (key == (int32)kHangulKey) {
 		_ToggleMode(outList);
-		return B_SKIP_MESSAGE;
+		return outList->CountItems() > 0 ? B_DISPATCH_MESSAGE : B_SKIP_MESSAGE;
 	}
 	if (key == (int32)kHangulHanjaKey)
 		return B_SKIP_MESSAGE;
@@ -695,7 +698,7 @@ KoreanInputMethod::Filter(BMessage* message, BList* outList)
 	if (key == (int32)kSpaceKey && (modifiers & B_SHIFT_KEY) != 0
 		&& (modifiers & kShortcut) == 0) {
 		_ToggleMode(outList);
-		return B_SKIP_MESSAGE;
+		return outList->CountItems() > 0 ? B_DISPATCH_MESSAGE : B_SKIP_MESSAGE;
 	}
 
 	if (message->what != B_KEY_DOWN)
