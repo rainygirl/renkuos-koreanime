@@ -7,6 +7,9 @@ R Chromium에서 한글을 입력할 수 있으며, R Chromium에서는 웹 페�
 이벤트(`KeyboardEvent.isComposing`)를 제대로 받습니다. 설치하면 시스템 언어도
 한국어로 바뀝니다.
 
+
+<img src="docs/terminal.png" alt="터미널에서 그 자리에 조합" width="560"> <img src="docs/deskbar.png" alt="Deskbar 표시기" width="134">
+
 ## pkgman으로 설치
 
 | RenkuOS | 명령 |
