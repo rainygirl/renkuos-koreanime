@@ -2,7 +2,7 @@
  * Copyright 2026 rainygirl. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
- * The Deskbar item that shows the input mode: 한 or A, drawn with the system
+ * The Deskbar item that shows the input mode: 가 or A, drawn with the system
  * font at the size Deskbar gives its items, so it stays sharp on a scaled
  * (HiDPI) screen. input_server's own method item is a 16x16 bitmap that is
  * never scaled; the input method takes it out of the Deskbar and puts this
@@ -156,7 +156,7 @@ KoreanIndicator::Draw(BRect updateRect)
 	StrokeRoundRect(key, radius, radius);
 	SetPenSize(1);
 
-	const char* label = fKorean && fActive ? "한" : "A";
+	const char* label = fKorean && fActive ? "가" : "A";
 	BFont font(be_bold_font);
 	font.SetSize(key.Height() * 0.72f);
 	SetFont(&font);

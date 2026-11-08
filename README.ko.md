@@ -7,7 +7,7 @@ R Chromium에서 한글을 입력할 수 있으며, R Chromium에서는 웹 페�
 이벤트(`KeyboardEvent.isComposing`)를 제대로 받습니다. 설치하면 시스템 언어도
 한국어로 바뀝니다.
 
-<img src="docs/terminal.png" alt="터미널에서 그 자리에 조합" width="560"> <img src="docs/deskbar.png" alt="Deskbar 표시기" width="134">
+<img src="docs/terminal.png" alt="터미널에서 그 자리에 조합" width="560"> <img src="docs/deskbar.png" alt="Deskbar 표시기" width="136">
 
 ## pkgman으로 설치
 
@@ -22,7 +22,7 @@ R Chromium에서 한글을 입력할 수 있으며, R Chromium에서는 웹 페�
 - 표시 언어와 형식 규칙이 한국어(ko, ko_KR)로 바뀝니다. 이미 한국어인
   시스템은 그대로 둡니다.
 - 입력기가 바로, 그리고 부팅할 때마다 스스로 켜집니다. 영문을 입력할 때는
-  Deskbar에 **A**, 한글을 입력할 때는 **한**이 보입니다. 이 아이콘은 화면
+  Deskbar에 **A**, 한글을 입력할 때는 **가**가 보입니다. 이 아이콘은 화면
   배율에 맞춰 그려지므로 고해상도(HiDPI) 화면에서도 선명하며, 시스템의 작은
   입력기 아이콘을 대신합니다.
 
